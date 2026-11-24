@@ -31,6 +31,8 @@ except FileNotFoundError:
 st.title("🛡️ Will this vulnerability be rated Critical?")
 st.write("Describe a newly published CVE. The model estimates the chance that NVD rates it "
          "**Critical** (CVSS v3 score 9.0 or higher), using only three facts about it.")
+st.info("This is an **educational project** (CS383). Do not use it for real security, medical, legal, "
+        "financial, employment, or public-safety decisions.")
 
 with st.form("cve"):
     c1, c2 = st.columns(2)

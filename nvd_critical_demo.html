@@ -7795,7 +7795,7 @@ a.anchor-link {
 <!-- End of mermaid configuration --></head>
 <body class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
 <main>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=abc129e2">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=1dd6720f">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7809,7 +7809,7 @@ a.anchor-link {
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=e039395c">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0029ec22">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7818,7 +7818,14 @@ a.anchor-link {
 <h2 id="1.-Define-the-problem">1. Define the problem<a class="anchor-link" href="#1.-Define-the-problem">¶</a></h2><p><strong>Question.</strong> When a vulnerability is first published, can we predict whether it will be rated <strong>Critical</strong> (CVSS v3 score 9.0 or higher) from what we know about it, such as its weakness type (CWE), the vendor, the kind of product, and who reported it?</p>
 <ul>
 <li><strong>Type:</strong> binary classification. <strong>Target:</strong> <code>is_critical</code> = 1 if the CVSS v3 severity is <code>CRITICAL</code>, else 0.</li>
-<li><strong>Candidate features:</strong> <code>cwe_primary</code>, <code>vendor</code>, <code>cpe_part</code> (application / OS / hardware), <code>source</code> (who reported it), <code>pub_year</code>, <code>n_references</code>. Step 5 shows how I decide which ones to keep.</li>
+<li><strong>Candidate features, and why each might matter:</strong><ul>
+<li><code>cwe_primary</code> (weakness type): it says <em>how</em> the bug works, and some kinds (injection, code execution) are plausibly worse than others (information leaks).</li>
+<li><code>vendor</code> and <code>cpe_part</code> (application / OS / hardware): some vendors and product types have a track record of serious flaws.</li>
+<li><code>source</code> (who reported it): different reporting organizations describe and score issues differently.</li>
+<li><code>pub_year</code> and <code>n_references</code>: severity ratings might drift over time, and a CVE that draws attention might collect more links.
+Step 5 shows how I decide which of these to keep.</li>
+</ul>
+</li>
 <li><strong>Deliberately NOT features:</strong> the CVSS metrics (<code>base_score</code>, <code>attack_vector</code>, <code>privileges_required</code>, ...). The severity rating is <em>computed from</em> those metrics, so using them would hand the model the answer. Step 7 shows how big that leak is.</li>
 </ul>
 <p><strong>Why it matters.</strong> A security team facing hundreds of new CVEs a week wants to know which to look at first.</p>
@@ -7826,7 +7833,7 @@ a.anchor-link {
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0f6fa9f7">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=af44974e">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7836,7 +7843,7 @@ a.anchor-link {
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=7cd22ca3">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=690d2ac7">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -7851,12 +7858,13 @@ a.anchor-link {
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">sklearn.base</span> <span class="kn">import</span> <span class="n">clone</span>
 <span class="kn">from</span> <span class="nn">sklearn.compose</span> <span class="kn">import</span> <span class="n">ColumnTransformer</span>
 <span class="kn">from</span> <span class="nn">sklearn.dummy</span> <span class="kn">import</span> <span class="n">DummyClassifier</span>
 <span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestClassifier</span>
 <span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
-<span class="kn">from</span> <span class="nn">sklearn.metrics</span> <span class="kn">import</span> <span class="n">ConfusionMatrixDisplay</span><span class="p">,</span> <span class="n">classification_report</span>
-<span class="kn">from</span> <span class="nn">sklearn.model_selection</span> <span class="kn">import</span> <span class="n">StratifiedKFold</span><span class="p">,</span> <span class="n">cross_val_score</span><span class="p">,</span> <span class="n">cross_validate</span><span class="p">,</span> <span class="n">train_test_split</span>
+<span class="kn">from</span> <span class="nn">sklearn.metrics</span> <span class="kn">import</span> <span class="n">ConfusionMatrixDisplay</span><span class="p">,</span> <span class="n">classification_report</span><span class="p">,</span> <span class="n">f1_score</span><span class="p">,</span> <span class="n">roc_auc_score</span>
+<span class="kn">from</span> <span class="nn">sklearn.model_selection</span> <span class="kn">import</span> <span class="n">GridSearchCV</span><span class="p">,</span> <span class="n">StratifiedKFold</span><span class="p">,</span> <span class="n">cross_val_score</span><span class="p">,</span> <span class="n">cross_validate</span><span class="p">,</span> <span class="n">train_test_split</span>
 <span class="kn">from</span> <span class="nn">sklearn.pipeline</span> <span class="kn">import</span> <span class="n">Pipeline</span>
 <span class="kn">from</span> <span class="nn">sklearn.preprocessing</span> <span class="kn">import</span> <span class="n">OneHotEncoder</span><span class="p">,</span> <span class="n">StandardScaler</span>
 
@@ -8047,17 +8055,17 @@ a.anchor-link {
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=5d6b4ce0">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=beb49e20">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p><strong>Provenance.</strong> The NVD is run by NIST. Each row is one CVE record: an identifier for a publicly disclosed vulnerability, enriched by NVD analysts with a CVSS score, weakness type (CWE), and affected products (CPE). <code>pull_nvd.py</code> flattens the nested JSON from the API into one row per CVE and skips records with status <em>Rejected</em>.</p>
+<p><strong>Source:</strong> <a href="https://nvd.nist.gov/developers/vulnerabilities">NVD CVE API 2.0</a>. <strong>Provenance.</strong> The NVD is run by NIST. Each row is one CVE record: an identifier for a publicly disclosed vulnerability, enriched by NVD analysts with a CVSS score, weakness type (CWE), and affected products (CPE). <code>pull_nvd.py</code> flattens the nested JSON from the API into one row per CVE and skips records with status <em>Rejected</em>.</p>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=82fac737">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=6dcb2c4a">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8111,7 +8119,7 @@ memory usage: 10.5+ MB
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=185964b8">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=b856db6e">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8121,7 +8129,7 @@ memory usage: 10.5+ MB
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=1652b559">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=bfe3124a">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8173,7 +8181,7 @@ source: 0 missing
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=968d9825">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=f23e1e4c">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8188,7 +8196,7 @@ source: 0 missing
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=351578d8">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=9b248f8b">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8198,7 +8206,7 @@ source: 0 missing
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=84a718fe">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=80cf5bfc">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8254,7 +8262,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=99d3fb4a">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=64da131d">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8265,17 +8273,18 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=b483886c">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=3d12bfc5">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="5.-Choose-the-features-and-build-a-model">5. Choose the features and build a model<a class="anchor-link" href="#5.-Choose-the-features-and-build-a-model">¶</a></h2><p>Split <strong>first</strong>. Choosing features is a modeling decision too, so I make it using the <strong>training set only</strong>. If I peeked at the test set while choosing, the final test score would be optimistic.</p>
+<h2 id="5.-Build-a-model">5. Build a model<a class="anchor-link" href="#5.-Build-a-model">¶</a></h2><p>This step covers the split, <strong>choosing the features</strong>, and the baseline and first models.</p>
+<p>Split <strong>first</strong>. Choosing features is a modeling decision too, so I make it using the <strong>training set only</strong>. If I peeked at the test set while choosing, the final test score would be optimistic.</p>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=23c57dcd">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=aca17b18">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8321,7 +8330,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d4744f7d">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=eca1e5e4">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8338,7 +8347,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=1065d1dd">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=276721c1">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8348,7 +8357,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=ccf0d135">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=e9b628c3">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8485,7 +8494,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=1616a2ce">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=71440284">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8495,7 +8504,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=2fec7df2">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=beaca5af">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8587,7 +8596,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0bc79489">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=1fdce303">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8598,7 +8607,7 @@ distinct weakness types: 493 | distinct vendors: 8952
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=53ed0569">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=4017f0c5">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8640,7 +8649,7 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=660f1515">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=77b65d42">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8651,7 +8660,7 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=45d64485">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=d9cc5eee">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8760,7 +8769,7 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d9ba44f3">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=8454f8cc">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8771,7 +8780,7 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=5dac0ec7">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=774ca1c5">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8813,7 +8822,7 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=5e1632ce">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0cd38eca">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8824,17 +8833,17 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=2f43755b">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=712ecf34">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="6.-Evaluate-(5-fold-cross-validation-on-the-training-set)">6. Evaluate (5-fold cross-validation on the training set)<a class="anchor-link" href="#6.-Evaluate-(5-fold-cross-validation-on-the-training-set)">¶</a></h2>
+<h2 id="6.-Evaluate-the-model">6. Evaluate the model<a class="anchor-link" href="#6.-Evaluate-the-model">¶</a></h2><p>Models are compared with <strong>5-fold cross-validation on the training set</strong>. The test set stays locked: it is opened exactly once, at the end of Step 7, for the model I commit to.</p>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=951c2d52">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=45651f3a">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8911,17 +8920,17 @@ Name: AUC alone, dtype: float64</pre>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d73ecc26">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=63b90014">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p>The baseline shows why accuracy alone misleads: predicting "not Critical" every time scores high accuracy but an F1 of 0 and an AUC of 0.5. A real model has to beat it on <strong>F1 and AUC</strong>.</p>
+<p><strong>What the numbers mean here.</strong> The baseline shows why accuracy alone misleads: predicting "not Critical" every time scores high accuracy but an F1 of 0 and an AUC of 0.5. For a security team, two questions matter. <em>Of the CVEs the model flags, how many really are Critical?</em> (precision) and <em>Of the real Criticals, how many does it catch?</em> (recall). F1 balances the two. AUC says how well the model ranks CVEs from least to most likely Critical, whatever cutoff is used. A real model has to beat the baseline on <strong>F1 and AUC</strong>.</p>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=f4228461">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=1921e49f">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -8930,10 +8939,472 @@ Name: AUC alone, dtype: float64</pre>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">best_name</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">"Baseline (most frequent)"</span><span class="p">)[</span><span class="s2">"f1"</span><span class="p">]</span><span class="o">.</span><span class="n">idxmax</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"Best by cross-validated F1:"</span><span class="p">,</span> <span class="n">best_name</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Best initial model by cross-validated F1:"</span><span class="p">,</span> <span class="n">best_name</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Best initial model by cross-validated F1: Random forest
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0210862f">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="7.-Improve-the-model">7. Improve the model<a class="anchor-link" href="#7.-Improve-the-model">¶</a></h2><p><strong>Attempt: tune the random forest.</strong> Three settings: <code>min_samples_leaf</code> (how small a leaf may get; 1 lets a tree memorize individual rows), <code>max_features</code> (how many columns each split considers), and <code>min_frequency</code> (how rare a vendor or CWE can be before it is lumped into one "infrequent" group). All tuning uses cross-validation on the <strong>training set</strong>. (The grid search below takes a minute or two.)</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=4e36af57">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [13]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">param_grid</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"model__min_samples_leaf"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span>
+    <span class="s2">"model__max_features"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"sqrt"</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">],</span>
+    <span class="s2">"prep__cat__min_frequency"</span><span class="p">:</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span>
+<span class="p">}</span>
+<span class="n">search</span> <span class="o">=</span> <span class="n">GridSearchCV</span><span class="p">(</span>
+    <span class="n">make_pipeline</span><span class="p">(</span><span class="n">RandomForestClassifier</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">class_weight</span><span class="o">=</span><span class="s2">"balanced_subsample"</span><span class="p">,</span>
+                                         <span class="n">n_jobs</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">RANDOM_STATE</span><span class="p">),</span> <span class="n">cat</span><span class="o">=</span><span class="n">CAT</span><span class="p">,</span> <span class="n">num</span><span class="o">=</span><span class="n">NUM</span><span class="p">),</span>
+    <span class="n">param_grid</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">,</span> <span class="n">scoring</span><span class="o">=</span><span class="s2">"f1"</span><span class="p">)</span>
+<span class="n">search</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
 
-<span class="c1"># The test set is used ONCE, for the model we picked.</span>
-<span class="n">final</span> <span class="o">=</span> <span class="n">models</span><span class="p">[</span><span class="n">best_name</span><span class="p">]</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+<span class="n">grid_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">search</span><span class="o">.</span><span class="n">cv_results_</span><span class="p">)[</span>
+    <span class="p">[</span><span class="s2">"param_model__min_samples_leaf"</span><span class="p">,</span> <span class="s2">"param_model__max_features"</span><span class="p">,</span> <span class="s2">"param_prep__cat__min_frequency"</span><span class="p">,</span> <span class="s2">"mean_test_score"</span><span class="p">]]</span>
+<span class="n">grid_table</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"min_samples_leaf"</span><span class="p">,</span> <span class="s2">"max_features"</span><span class="p">,</span> <span class="s2">"min_frequency"</span><span class="p">,</span> <span class="s2">"CV F1"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Best settings:"</span><span class="p">,</span> <span class="n">search</span><span class="o">.</span><span class="n">best_params_</span><span class="p">)</span>
+<span class="n">grid_table</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"CV F1"</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Best settings: {'model__max_features': 0.1, 'model__min_samples_leaf': 1, 'prep__cat__min_frequency': 5}
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[13]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>min_samples_leaf</th>
+<th>max_features</th>
+<th>min_frequency</th>
+<th>CV F1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>6</th>
+<td>1</td>
+<td>0.1</td>
+<td>5</td>
+<td>0.5361</td>
+</tr>
+<tr>
+<th>0</th>
+<td>1</td>
+<td>sqrt</td>
+<td>5</td>
+<td>0.5325</td>
+</tr>
+<tr>
+<th>8</th>
+<td>3</td>
+<td>0.1</td>
+<td>5</td>
+<td>0.5209</td>
+</tr>
+<tr>
+<th>7</th>
+<td>1</td>
+<td>0.1</td>
+<td>20</td>
+<td>0.5175</td>
+</tr>
+<tr>
+<th>1</th>
+<td>1</td>
+<td>sqrt</td>
+<td>20</td>
+<td>0.5158</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=1f281f1b">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [14]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="c1"># Refit the best settings with the same 200 trees as the initial model, so the comparison is fair.</span>
+<span class="n">tuned</span> <span class="o">=</span> <span class="n">clone</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="s2">"Random forest"</span><span class="p">])</span><span class="o">.</span><span class="n">set_params</span><span class="p">(</span><span class="o">**</span><span class="n">search</span><span class="o">.</span><span class="n">best_params_</span><span class="p">)</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">cross_validate</span><span class="p">(</span><span class="n">tuned</span><span class="p">,</span> <span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">,</span> <span class="n">scoring</span><span class="o">=</span><span class="p">[</span><span class="s2">"f1"</span><span class="p">,</span> <span class="s2">"roc_auc"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Initial random forest: CV F1 </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s1">'Random forest'</span><span class="p">,</span> <span class="s1">'f1'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   AUC </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s1">'Random forest'</span><span class="p">,</span> <span class="s1">'roc_auc'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Tuned random forest:   CV F1 </span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">'test_f1'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   AUC </span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">'test_roc_auc'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Initial random forest: CV F1 0.505   AUC 0.873
+Tuned random forest:   CV F1 0.537   AUC 0.855
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=89b398cf">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>Tuning raised the cross-validated F1, and the winning settings are the <em>least</em> restrictive ones (leaves of size 1, rare vendors kept separate). That is a warning sign, not a victory. Many CVEs are published in batches: the same vendor, the same weakness type, the same reporter, often with the same severity. In random cross-validation a row's near-twin is usually in the training folds, so a model that <strong>memorizes combinations</strong> scores better than it will on a vendor or a year it has not seen.</p>
+<p><strong>Check:</strong> train on the earlier year only and score on the later year, using the training set only. This is a closer match to real use, where the model faces CVEs it has never seen.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=66afe708">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [15]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">combo</span> <span class="o">=</span> <span class="n">X_train</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="s2">"|"</span><span class="o">.</span><span class="n">join</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">combo</span><span class="o">.</span><span class="n">nunique</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> distinct (weakness, vendor, source) combinations in </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">combo</span><span class="p">)</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> training rows"</span><span class="p">)</span>
+
+<span class="n">year</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">X_train</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="s2">"published"</span><span class="p">])</span><span class="o">.</span><span class="n">dt</span><span class="o">.</span><span class="n">year</span>
+<span class="n">early</span><span class="p">,</span> <span class="n">late</span> <span class="o">=</span> <span class="p">(</span><span class="n">year</span> <span class="o">==</span> <span class="n">year</span><span class="o">.</span><span class="n">min</span><span class="p">()),</span> <span class="p">(</span><span class="n">year</span> <span class="o">==</span> <span class="n">year</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+
+<span class="k">def</span> <span class="nf">forward_check</span><span class="p">(</span><span class="n">pipe</span><span class="p">):</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">clone</span><span class="p">(</span><span class="n">pipe</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">[</span><span class="n">early</span><span class="p">],</span> <span class="n">y_train</span><span class="p">[</span><span class="n">early</span><span class="p">])</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">f1_score</span><span class="p">(</span><span class="n">y_train</span><span class="p">[</span><span class="n">late</span><span class="p">],</span> <span class="n">p</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X_train</span><span class="p">[</span><span class="n">late</span><span class="p">])),</span>
+            <span class="n">roc_auc_score</span><span class="p">(</span><span class="n">y_train</span><span class="p">[</span><span class="n">late</span><span class="p">],</span> <span class="n">p</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X_train</span><span class="p">[</span><span class="n">late</span><span class="p">])[:,</span> <span class="mi">1</span><span class="p">]))</span>
+
+<span class="n">candidates_final</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Baseline (most frequent)"</span><span class="p">:</span> <span class="n">models</span><span class="p">[</span><span class="s2">"Baseline (most frequent)"</span><span class="p">],</span>
+                    <span class="s2">"Initial model"</span><span class="p">:</span> <span class="n">models</span><span class="p">[</span><span class="n">best_name</span><span class="p">],</span> <span class="s2">"Tuned random forest"</span><span class="p">:</span> <span class="n">tuned</span><span class="p">}</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">pipe</span> <span class="ow">in</span> <span class="n">candidates_final</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">cross_validate</span><span class="p">(</span><span class="n">pipe</span><span class="p">,</span> <span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">,</span> <span class="n">scoring</span><span class="o">=</span><span class="p">[</span><span class="s2">"f1"</span><span class="p">,</span> <span class="s2">"roc_auc"</span><span class="p">])</span>
+    <span class="n">f_fwd</span><span class="p">,</span> <span class="n">a_fwd</span> <span class="o">=</span> <span class="n">forward_check</span><span class="p">(</span><span class="n">pipe</span><span class="p">)</span>
+    <span class="n">rows</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"CV F1 (random)"</span><span class="p">:</span> <span class="n">s</span><span class="p">[</span><span class="s2">"test_f1"</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="s2">"CV AUC (random)"</span><span class="p">:</span> <span class="n">s</span><span class="p">[</span><span class="s2">"test_roc_auc"</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span>
+                  <span class="sa">f</span><span class="s2">"F1 </span><span class="si">{</span><span class="n">year</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">}</span><span class="s2"> to </span><span class="si">{</span><span class="n">year</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span> <span class="n">f_fwd</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"AUC </span><span class="si">{</span><span class="n">year</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">}</span><span class="s2"> to </span><span class="si">{</span><span class="n">year</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span> <span class="n">a_fwd</span><span class="p">}</span>
+<span class="n">improvement</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">improvement</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>21,714 distinct (weakness, vendor, source) combinations in 54,755 training rows
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[15]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>CV F1 (random)</th>
+<th>CV AUC (random)</th>
+<th>F1 2023 to 2024</th>
+<th>AUC 2023 to 2024</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>Baseline (most frequent)</th>
+<td>0.000</td>
+<td>0.500</td>
+<td>0.000</td>
+<td>0.500</td>
+</tr>
+<tr>
+<th>Initial model</th>
+<td>0.505</td>
+<td>0.873</td>
+<td>0.449</td>
+<td>0.838</td>
+</tr>
+<tr>
+<th>Tuned random forest</th>
+<td>0.537</td>
+<td>0.855</td>
+<td>0.452</td>
+<td>0.800</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=f70e42be">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p><strong>Result.</strong> Compare the two kinds of columns. The tuned model wins on F1 under random cross-validation, but when it must predict a <em>later</em> year its F1 is no better, and its AUC (how well it ranks CVEs) is lower in every column. Most of the "improvement" was memorizing repeated combinations, which does not carry over to new CVEs. So I <strong>keep the simpler initial model</strong>. This is a documented attempt that did not hold up, which is a legitimate outcome. The forward-in-time columns are also a more honest guide to how the model would perform on tomorrow's CVEs: lower than the random cross-validation numbers.</p>
+<p>What I would try next: a time-based split for <em>all</em> model choices, or more informative features (for example, the text of the CVE description).</p>
+<h3 id="Possible-data-leakage,-and-how-I-prevented-it">Possible data leakage, and how I prevented it<a class="anchor-link" href="#Possible-data-leakage,-and-how-I-prevented-it">¶</a></h3><ul>
+<li><strong>The test set never influenced a choice.</strong> I split first; the features were chosen (Step 5) and the settings tuned (above) using cross-validation on the training set only.</li>
+<li><strong>Preprocessing is inside the <code>Pipeline</code>.</strong> The encoder is fitted on training folds only, never on held-out rows.</li>
+<li><strong>Target-derived columns are excluded.</strong> The CVSS metrics are the clearest case, shown next.</li>
+<li><strong>Batch effects.</strong> Near-duplicate CVEs across folds inflated the tuned model's score, which is why I added the forward-in-time check.</li>
+</ul>
+<p><strong>The CVSS leak.</strong> Severity is <em>computed from</em> the CVSS metrics, so a model that sees them can "predict" it almost perfectly. That looks like a great result and is useless, because the metrics exist only <em>after</em> someone has already rated the vulnerability.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=04201d22">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [16]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">leaky</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"base_score"</span><span class="p">,</span> <span class="s2">"attack_vector"</span><span class="p">,</span> <span class="s2">"attack_complexity"</span><span class="p">,</span> <span class="s2">"privileges_required"</span><span class="p">,</span>
+         <span class="s2">"user_interaction"</span><span class="p">,</span> <span class="s2">"scope"</span><span class="p">,</span> <span class="s2">"confidentiality"</span><span class="p">,</span> <span class="s2">"integrity"</span><span class="p">,</span> <span class="s2">"availability"</span><span class="p">]</span>
+<span class="n">df_leaky</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">leaky</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+    <span class="n">df_leaky</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="n">df_leaky</span><span class="p">[</span><span class="n">c</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s2">"unknown"</span><span class="p">)</span>
+<span class="n">Xl</span> <span class="o">=</span> <span class="n">df_leaky</span><span class="p">[</span><span class="n">FEATURES</span> <span class="o">+</span> <span class="n">leaky</span><span class="p">]</span>
+<span class="n">Xl_train</span><span class="p">,</span> <span class="n">Xl_test</span><span class="p">,</span> <span class="n">yl_train</span><span class="p">,</span> <span class="n">yl_test</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span>
+    <span class="n">Xl</span><span class="p">,</span> <span class="n">df_leaky</span><span class="p">[</span><span class="s2">"is_critical"</span><span class="p">],</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">stratify</span><span class="o">=</span><span class="n">df_leaky</span><span class="p">[</span><span class="s2">"is_critical"</span><span class="p">],</span> <span class="n">random_state</span><span class="o">=</span><span class="n">RANDOM_STATE</span><span class="p">)</span>
+
+<span class="n">leaky_pipe</span> <span class="o">=</span> <span class="n">make_pipeline</span><span class="p">(</span>
+    <span class="n">RandomForestClassifier</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">min_samples_leaf</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">n_jobs</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">RANDOM_STATE</span><span class="p">),</span>
+    <span class="n">cat</span><span class="o">=</span><span class="n">CAT</span> <span class="o">+</span> <span class="n">leaky</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">num</span><span class="o">=</span><span class="n">NUM</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"base_score"</span><span class="p">])</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">cross_validate</span><span class="p">(</span><span class="n">leaky_pipe</span><span class="p">,</span> <span class="n">Xl_train</span><span class="p">,</span> <span class="n">yl_train</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">,</span> <span class="n">scoring</span><span class="o">=</span><span class="p">[</span><span class="s2">"f1"</span><span class="p">,</span> <span class="s2">"roc_auc"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"With CVSS metrics:    F1 </span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">'test_f1'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   AUC </span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">'test_roc_auc'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   &lt;- too good to be true"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Honest model:         F1 </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_name</span><span class="p">,</span> <span class="s1">'f1'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   AUC </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_name</span><span class="p">,</span> <span class="s1">'roc_auc'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>With CVSS metrics:    F1 0.999   AUC 1.000   &lt;- too good to be true
+Honest model:         F1 0.505   AUC 0.873
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=bab0cebf">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>When a score jumps from decent to near perfect, ask what the model can see that it would not have at prediction time. The honest number is the lower one.</p>
+<h3 id="Final-evaluation-on-the-test-set-(once)">Final evaluation on the test set (once)<a class="anchor-link" href="#Final-evaluation-on-the-test-set-(once)">¶</a></h3><p>The decision is made, so the test set is opened now. All three models are scored on it a single time, and nothing is changed afterward.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=e24e7239">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [17]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">test_rows</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">pipe</span> <span class="ow">in</span> <span class="n">candidates_final</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">clone</span><span class="p">(</span><span class="n">pipe</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+    <span class="n">test_rows</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Test F1"</span><span class="p">:</span> <span class="n">f1_score</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X_test</span><span class="p">)),</span>
+                       <span class="s2">"Test AUC"</span><span class="p">:</span> <span class="n">roc_auc_score</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X_test</span><span class="p">)[:,</span> <span class="mi">1</span><span class="p">])}</span>
+<span class="n">final_table</span> <span class="o">=</span> <span class="n">improvement</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">test_rows</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">final_table</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[17]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>CV F1 (random)</th>
+<th>CV AUC (random)</th>
+<th>F1 2023 to 2024</th>
+<th>AUC 2023 to 2024</th>
+<th>Test F1</th>
+<th>Test AUC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>Baseline (most frequent)</th>
+<td>0.000</td>
+<td>0.500</td>
+<td>0.000</td>
+<td>0.500</td>
+<td>0.000</td>
+<td>0.500</td>
+</tr>
+<tr>
+<th>Initial model</th>
+<td>0.505</td>
+<td>0.873</td>
+<td>0.449</td>
+<td>0.838</td>
+<td>0.521</td>
+<td>0.884</td>
+</tr>
+<tr>
+<th>Tuned random forest</th>
+<td>0.537</td>
+<td>0.855</td>
+<td>0.452</td>
+<td>0.800</td>
+<td>0.560</td>
+<td>0.861</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=33a0fa85">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p><strong>Reading the table.</strong> The tuned model also scores a higher F1 on the test set. That does not change the decision, for two reasons. First, the choice was made <em>before</em> the test set was opened, and switching after seeing the test score would turn the test set into one more tuning tool. Second, the test set is a random sample from the same batches of CVEs, so it shares the near-twin effect that inflated the tuned model's cross-validated score. The forward-in-time columns are the fairer guide, and the tuned model's AUC is lower in every column, test set included.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=05fcb476">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [18]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">final</span> <span class="o">=</span> <span class="n">clone</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="n">best_name</span><span class="p">])</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>     <span class="c1"># the model I committed to: the initial one</span>
 <span class="n">pred</span> <span class="o">=</span> <span class="n">final</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">classification_report</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">,</span> <span class="n">target_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"not critical"</span><span class="p">,</span> <span class="s2">"critical"</span><span class="p">]))</span>
 <span class="n">ConfusionMatrixDisplay</span><span class="o">.</span><span class="n">from_predictions</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">,</span> <span class="n">display_labels</span><span class="o">=</span><span class="p">[</span><span class="s2">"not critical"</span><span class="p">,</span> <span class="s2">"critical"</span><span class="p">],</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"Blues"</span><span class="p">)</span>
@@ -8948,13 +9419,6 @@ Name: AUC alone, dtype: float64</pre>
 <div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
 </div>
 <div class="jp-OutputArea jp-Cell-outputArea">
-<div class="jp-OutputArea-child">
-<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
-<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
-<pre>Best by cross-validated F1: Random forest
-</pre>
-</div>
-</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
@@ -8979,50 +9443,39 @@ weighted avg       0.88      0.79      0.82     13689
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=2782dc45">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=a62ae7d7">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p><strong>Reading it.</strong> Compare the test F1 with the cross-validated F1. They should be close; a big gap would mean the model was tuned to the training data. The model is a triage aid, not a verdict: weakness type and vendor explain part of severity, but the details of <em>how</em> a bug can be exploited are what actually drive the CVSS score, and we do not have those at prediction time.</p>
+<p>The test F1 should be close to the cross-validated F1. A big gap would mean the model had been tuned to the training data.</p>
 </div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=6259993d">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=6c00491b">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="7.-The-leakage-trap">7. The leakage trap<a class="anchor-link" href="#7.-The-leakage-trap">¶</a></h2><p>What if we add the CVSS metrics as features? Severity is computed from them, so the model can "predict" it almost perfectly. That would look like a great result and be useless, because those metrics are only known <em>after</em> someone has already rated the vulnerability.</p>
+<h2 id="8.-Communicate-the-findings">8. Communicate the findings<a class="anchor-link" href="#8.-Communicate-the-findings">¶</a></h2>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=584de7ba">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=acd7d541">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [13]:</div>
+<div class="jp-InputPrompt jp-InputArea-prompt">In [19]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="n">leaky</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"base_score"</span><span class="p">,</span> <span class="s2">"attack_vector"</span><span class="p">,</span> <span class="s2">"attack_complexity"</span><span class="p">,</span> <span class="s2">"privileges_required"</span><span class="p">,</span>
-         <span class="s2">"user_interaction"</span><span class="p">,</span> <span class="s2">"scope"</span><span class="p">,</span> <span class="s2">"confidentiality"</span><span class="p">,</span> <span class="s2">"integrity"</span><span class="p">,</span> <span class="s2">"availability"</span><span class="p">]</span>
-<span class="n">df_leaky</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-<span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">leaky</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
-    <span class="n">df_leaky</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="n">df_leaky</span><span class="p">[</span><span class="n">c</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s2">"unknown"</span><span class="p">)</span>
-<span class="n">Xl</span> <span class="o">=</span> <span class="n">df_leaky</span><span class="p">[</span><span class="n">FEATURES</span> <span class="o">+</span> <span class="n">leaky</span><span class="p">]</span>
-<span class="n">Xl_train</span><span class="p">,</span> <span class="n">Xl_test</span><span class="p">,</span> <span class="n">yl_train</span><span class="p">,</span> <span class="n">yl_test</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span>
-    <span class="n">Xl</span><span class="p">,</span> <span class="n">df_leaky</span><span class="p">[</span><span class="s2">"is_critical"</span><span class="p">],</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">stratify</span><span class="o">=</span><span class="n">df_leaky</span><span class="p">[</span><span class="s2">"is_critical"</span><span class="p">],</span> <span class="n">random_state</span><span class="o">=</span><span class="n">RANDOM_STATE</span><span class="p">)</span>
-
-<span class="n">leaky_pipe</span> <span class="o">=</span> <span class="n">make_pipeline</span><span class="p">(</span>
-    <span class="n">RandomForestClassifier</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">min_samples_leaf</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">n_jobs</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">RANDOM_STATE</span><span class="p">),</span>
-    <span class="n">cat</span><span class="o">=</span><span class="n">CAT</span> <span class="o">+</span> <span class="n">leaky</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">num</span><span class="o">=</span><span class="n">NUM</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"base_score"</span><span class="p">])</span>
-<span class="n">s</span> <span class="o">=</span> <span class="n">cross_validate</span><span class="p">(</span><span class="n">leaky_pipe</span><span class="p">,</span> <span class="n">Xl_train</span><span class="p">,</span> <span class="n">yl_train</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">,</span> <span class="n">scoring</span><span class="o">=</span><span class="p">[</span><span class="s2">"f1"</span><span class="p">,</span> <span class="s2">"roc_auc"</span><span class="p">])</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"With CVSS metrics:    F1 </span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">'test_f1'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   AUC </span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">'test_roc_auc'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   &lt;- too good to be true"</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Honest model (above): F1 </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_name</span><span class="p">,</span> <span class="s1">'f1'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">   AUC </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_name</span><span class="p">,</span> <span class="s1">'roc_auc'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">r</span> <span class="o">=</span> <span class="n">classification_report</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">,</span> <span class="n">output_dict</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="s2">"1"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Of every 100 CVEs the model flags as Critical, about </span><span class="si">{</span><span class="n">r</span><span class="p">[</span><span class="s1">'precision'</span><span class="p">]</span> <span class="o">*</span> <span class="mi">100</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> really are."</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Of every 100 CVEs that really are Critical, it flags about </span><span class="si">{</span><span class="n">r</span><span class="p">[</span><span class="s1">'recall'</span><span class="p">]</span> <span class="o">*</span> <span class="mi">100</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">."</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"For comparison, </span><span class="si">{</span><span class="n">df</span><span class="p">[</span><span class="s1">'is_critical'</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> of every 100 CVEs are Critical to begin with."</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -9035,41 +9488,50 @@ weighted avg       0.88      0.79      0.82     13689
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
-<pre>With CVSS metrics:    F1 0.999   AUC 1.000   &lt;- too good to be true
-Honest model (above): F1 0.505   AUC 0.873
+<pre>Of every 100 CVEs the model flags as Critical, about 38 really are.
+Of every 100 CVEs that really are Critical, it flags about 82.
+For comparison, 14 of every 100 CVEs are Critical to begin with.
 </pre>
 </div>
 </div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=df84328d">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0c634d86">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p>When a score jumps from decent to near perfect, ask what the model can see that it would not have at prediction time. The honest number is the lower one.</p>
+<p><strong>In plain language.</strong> A new vulnerability is published, and before anyone has scored it, we ask whether it will turn out to be rated <em>Critical</em>. Using only the weakness type, the vendor, and who reported it, the model catches most real Criticals but also raises many false alarms. Its flags are right several times more often than picking CVEs at random, but most flags are still false alarms, so they are not reliable on their own.</p>
+<p><strong>Does it answer the question?</strong> Partly. Yes, those three facts do carry real signal about severity: the weakness type is by far the strongest. But they do not determine it. The details of <em>how</em> a bug can be exploited drive the real score, and we do not know them at prediction time.</p>
+<p><strong>Predictive performance versus real-world usefulness.</strong> The model is a triage aid: a way to decide which new CVEs a person should look at first. It is not a substitute for scoring. And the forward-in-time check in Step 7 shows its performance on genuinely new CVEs is lower than the headline cross-validation numbers.</p>
+<p><strong>Correlation, not causation.</strong> Nothing here says a vendor or a weakness type <em>causes</em> a high rating. The model finds patterns in how past CVEs were rated.</p>
+<h3 id="Ethics-and-limitations">Ethics and limitations<a class="anchor-link" href="#Ethics-and-limitations">¶</a></h3><ul>
+<li><strong>Who is represented?</strong> The data covers CVEs that were scored under CVSS v3 and published in 2023 and 2024. A small number of vendors and reporting organizations account for many records, and the model has seen thousands of vendors only rarely. For a vendor it has barely seen, it falls back on weakness type and reporter alone, so it will be least reliable for small or new vendors, which are exactly the ones a security team may know least about. Ratings are also analysts' judgments, not measured facts.</li>
+<li><strong>Realistic worst case.</strong> The model rates a truly Critical vulnerability as low risk and a team deprioritizes it, leaving a serious hole open longer. The opposite error, too many false alarms, wastes limited analyst time and can train people to ignore the tool.</li>
+<li><strong>What to verify before trusting it.</strong> Test it on CVEs published <em>after</em> the training period, check accuracy separately for the largest vendors and for rare ones, compare its flags with what experienced analysts would prioritize, and check whether its probabilities are well calibrated (does "80%" mean about 80%?).</li>
+</ul>
 </div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=bf37fe6e">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=54b7ec03">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="8.-Save-the-model-for-deployment">8. Save the model for deployment<a class="anchor-link" href="#8.-Save-the-model-for-deployment">¶</a></h2><p><code>app.py</code> needs two files from this notebook: the fitted pipeline, and a small JSON with the choices to show in the dropdowns. The pipeline contains the encoder, so the app passes in raw values and gets a prediction.</p>
+<h2 id="Appendix-A:-Save-the-model-for-deployment">Appendix A: Save the model for deployment<a class="anchor-link" href="#Appendix-A:-Save-the-model-for-deployment">¶</a></h2><p>This is the separate deployment deliverable, not one of the eight steps. <code>app.py</code> needs two files from this notebook: the fitted pipeline, and a small JSON with the choices to show in the dropdowns. The pipeline contains the encoder, so the app passes in raw values and gets a prediction.</p>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=7e31ca7f">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=d93d4440">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [14]:</div>
+<div class="jp-InputPrompt jp-InputArea-prompt">In [20]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">joblib</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">final</span><span class="p">,</span> <span class="s2">"critical_model.joblib"</span><span class="p">)</span>
@@ -9113,14 +9575,15 @@ scikit-learn 1.7.2 &lt;- put this exact version in requirements.txt
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=95e7de03">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d841a6ed">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p><strong>Next:</strong> run <code>streamlit run app.py</code> locally, then follow the deployment slides: push this folder to GitHub (including <code>critical_model.joblib</code> and <code>app_options.json</code>, but not the big CSV) and create the app on Streamlit Community Cloud.</p>
-<p><strong>Limits worth saying out loud in your own project.</strong> Only CVEs with a v3 rating are modeled. Labels come from an analyst's judgment, not a ground truth. The model sees weakness type and vendor but not the exploit details that drive severity. Rating practices also change over time, so a model trained on 2023–2024 may drift. And the weakness type and product data on a CVE can be filled in by NVD analysts at about the same time as the score, so a true day-one version of this model should rely only on what the reporting organization supplies.</p>
+<p><strong>Next:</strong> run <code>streamlit run app.py</code> locally, then follow the deployment slides: push this folder to GitHub (including <code>critical_model.joblib</code> and <code>app_options.json</code>) and create the app on Streamlit Community Cloud.</p>
+<h2 id="Appendix-B:-Use-of-generative-AI">Appendix B: Use of generative AI<a class="anchor-link" href="#Appendix-B:-Use-of-generative-AI">¶</a></h2><p><em>An example of the disclosure the capstone asks for. Write yours in your own words.</em></p>
+<p>I chose the topic and the question, got my own NVD API key, and ran the data pull. I used Claude (Anthropic) to help with the initial drafts of the code and notebook. I then ran and tested everything myself, reviewed the results, and decided which features and model to keep.</p>
 </div>
 </div>
 </div>
